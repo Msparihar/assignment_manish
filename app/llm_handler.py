@@ -8,18 +8,18 @@ load_dotenv(override=True)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def handle_input(prompt, data, image=None):
+def handle_input(system_prompt, user_prompt, data=None, image=None):
     """Handles input and routes to appropriate LLM response generator."""
     if image:
-        return generate_llm_response_image(prompt, image)
+        return generate_llm_response_image(system_prompt, user_prompt, image)
     else:
-        return generate_llm_response_text(prompt, data)
+        return generate_llm_response_text(system_prompt, user_prompt, data)
 
-def generate_llm_response_text(prompt, data):
+def generate_llm_response_text(system_prompt, user_prompt, data):
     """Generates LLM response for text input."""
     messages = [
-        {"role": "system", "content": "You are a helpful assistant that analyzes various types of data, including text documents, images, and pandas DataFrames."},
-        {"role": "user", "content": f"{prompt}\n\nData: {data}\n\nPlease specify the input type for accurate analysis."}
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt.format(parsed_data=data)}
     ]
 
     # Create chat completion using OpenAI API
@@ -34,7 +34,7 @@ def generate_llm_response_text(prompt, data):
 
     return response.choices[0].message.content.strip()
 
-def generate_llm_response_image(prompt, image):
+def generate_llm_response_image(system_prompt, user_prompt, image):
     """Generates LLM response for image input."""
     # Read image file and encode to base64
     image_base64 = base64.b64encode(image.getvalue()).decode('utf-8')
@@ -49,9 +49,16 @@ def generate_llm_response_image(prompt, image):
         "model": "gpt-4o-mini",
         "messages": [
             {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt},
+                    {
+                        "type": "text",
+                        "text": user_prompt.format(parsed_data="[Image data]")
+                    },
                     {
                         "type": "image_url",
                         "image_url": {
@@ -66,5 +73,8 @@ def generate_llm_response_image(prompt, image):
 
     # Send POST request to OpenAI API
     response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+
+    if response.status_code != 200:
+        raise Exception(f"Error in API call: {response.status_code} - {response.text}")
 
     return response.json()['choices'][0]['message']['content'].strip()
